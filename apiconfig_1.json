@@ -1,0 +1,10 @@
+{
+    "url":"https://chipichic.com.ar/",
+    "consumer_key":"ck_d92c277a88fc938ce249666d5e0279eefb02bf9a",
+    "consumer_secret":"cs_fffefffa546a0c7f18b46225030c488b286e3e1d",
+    "host":"190.210.183.53",
+    "user":"tiendas9",
+    "port": 3306,
+    "passwd":"UKH30O55",
+    "database":"nano_central"
+}

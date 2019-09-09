@@ -1,0 +1,10 @@
+{
+    "url":"https://merbury.com.ar/",
+    "consumer_key":"ck_eb7d336e347b8857a0c9160b596dbe14b12e9a4f",
+    "consumer_secret":"cs_8f420f7eadfaee10242d39c6dec6a0c2ed87fab4",
+    "host":"190.210.183.53",
+    "user":"tiendas9",
+    "port": 3306,
+    "passwd":"UKH30O55",
+    "database":"nano_central"
+}
