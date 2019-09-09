@@ -1,0 +1,380 @@
+# -*- coding: utf-8 -*-
+import json
+import sys
+
+import pymysql.cursors
+from woocommerce import API
+
+# Lee parametros
+tienda = sys.argv[1]
+opcion = sys.argv[2]
+
+ArcConf = ""
+
+# Lee configuraciones
+
+if tienda == "1":
+    ArcConf = "apiconfig_1.json"
+elif tienda == "2":
+    ArcConf = "apiconfig_2.json"
+elif tienda == "3":
+    ArcConf = "apiconfig_3.json"
+elif tienda == "4":
+    ArcConf = "apiconfig_4.json"
+elif tienda == "5":
+    ArcConf = "apiconfig_5.json"
+elif tienda == "6":
+    ArcConf = "apiconfig_6.json"
+elif tienda == "7":
+    ArcConf = "apiconfig_7.json"
+elif tienda == "8":
+    ArcConf = "apiconfig_8.json"
+elif tienda == "9":
+    ArcConf = "apiconfig_9.json"
+else:
+    print("Parametro erroneo !!")
+
+with open(ArcConf) as config:
+    data = json.load(config)
+
+    URL = data["url"]
+    CONSUMER_KEY = data["consumer_key"]
+    CONSUMER_SECRET = data["consumer_secret"]
+    HOST = data["host"]
+    PORT = data["port"]
+    USER = data["user"]
+    PASSWD = data["passwd"]
+    DATABASE = data["database"]
+
+# Configura API woocommerce
+
+wcapi = API(
+    url=URL,
+    consumer_key=CONSUMER_KEY,
+    consumer_secret=CONSUMER_SECRET,
+    version="wc/v3",
+    timeout=50,
+    query_string_auth=True
+)
+
+# Conectar con base de datos sintesys
+
+ncon = pymysql.connect(host=HOST,
+                       user=USER,
+                       passwd=PASSWD,
+                       database=DATABASE,
+                       port=PORT,
+                       cursorclass=pymysql.cursors.DictCursor)
+
+log = open("log_completo.txt", 'w')
+resumen = open("log_resumen.txt", 'w')
+
+
+# Actualizacion de categorias
+
+def actualizar_categorias():
+    data = {}
+    cursor = ncon.cursor()
+    comando = "SELECT * FROM rubros WHERE paratiendas LIKE '%" + tienda + "%' order by id_rubros "
+    cursor.execute(comando)
+    filas = cursor.fetchall()
+
+    for fila in filas:
+
+        # verifica si existe el rubro
+
+        data["name"] = fila["nom_rub"]
+        log.write("CATEGORIA DATO A ACTUALIZAR:" + str(data) + '\n')
+        res = wcapi.post("products/categories", data).json()
+        print(res)
+        log.write("CATEGORIA RESULTADO:" + str(res) + '\n')
+        try:
+            c = int(res["id"])
+            i = fila["id_rubros"]
+            t = "id_woo" + tienda
+            comando = "update rubros set " + t + "=%s where id_rubros=%s "
+            cursor.execute(comando, (c, i))
+            ncon.commit()
+        except KeyError:
+            pass
+
+    data.clear()
+    cursor.close()
+    ncon.close()
+    return True
+
+
+def actualizar_productos():
+    # trae datos a procesar
+
+    data = {}
+    cursor = ncon.cursor()
+    comando = 'SELECT * FROM wpublicados where  accion in ("A","M","B") and id_wtiendas =%s  order by orden '
+    cursor.execute(comando, tienda)
+
+    for pd in cursor:
+
+        # arma matriz de datos
+
+        atrib1 = pd["valor_atributo_1"].strip()
+        atrib2 = pd["valor_atributo_2"].strip()
+        atrib1 = atrib1.split(",")
+        atrib2 = atrib2.split(",")
+
+        imgs = pd["images"].strip()
+        imgs = imgs.split(",")
+
+        lisimg = []
+
+        for img in imgs:
+            if img == "":
+                continue
+
+            lisimg.append({"src": img})
+
+        data.update(
+            {
+                "sku": pd["sku"],
+                "name": pd["name"].strip(),
+                "type": pd["type"].strip(),
+                "description": pd["description"].strip(),
+                "stock_status": pd["stock_status"].strip(),
+                "stock_quantity": str(pd["stock_quantity"]),
+                "weight": str(pd["weight"]),
+                "dimensions": {"length": str(pd["lenght"]), "width": str(pd["width"]), "height": str(pd["height"])},
+                "regular_price": str(pd["regular_price"]),
+                "categories": [{"id": pd["categories_id"]}],
+                "images": lisimg,
+                "attributes":
+                    [
+                        {"name": pd["nombre_atributo_1"], "options": atrib1, "visible": True, "variation": True},
+                        {"name": pd["nombre_atributo_2"], "options": atrib2, "visible": True, "variation": True}
+                    ]}
+        )
+
+        # loop de actualizacion1"1
+
+        # Productos
+
+        if pd["type"].strip() == "simple" or pd["type"].strip() == "variable":
+
+            print("DATO A ACTUALIZAR:", data)
+            log.write("DATO A ACTUALIZAR:" + str(data) + '\n')
+
+            if pd["accion"] == "A":
+
+                # alta
+
+                res = wcapi.post("products", data).json()
+                print("ALTA PRODUCTO", res)
+
+                log.write("ALTA PRODUCTO:" + str(res) + '\n')
+
+                try:
+                    resumen.write("ALTA PRODUCTO" + '\n')
+                    resumen.write(data["sku"] + " " + data["name"] + " " + data["type"] + '\n')
+                    resumen.write("Respuesta:" + '\n')
+                    resumen.write(res["code"] + " " + "\n" + res["message"] + '\n')
+                except KeyError:
+                    resumen.write("Actualización correcta " + str(res["id"]) + " agregado" + '\n')
+
+                # guarda id en publicados
+                try:
+                    Id = int(res["id"])
+                    tmp = ncon.cursor()
+                    comando = "update wpublicados set id_woo = %s,accion='',resultado=%s where id_wtiendas=%s and id_articulo=%s "
+                    tmp.execute(comando, (Id, str(res), tienda, pd["id_articulo"]))
+                    ncon.commit()
+                    tmp.close()
+                except KeyError:
+                    pass
+
+
+            elif pd["accion"] == "M":
+                id = str(pd["id_woo"])
+                res = wcapi.put("products/" + id, data).json()
+
+                try:
+                    resumen.write("MODIFICACION PRODUCTO" + '\n')
+                    resumen.write(data["sku"] + " " + data["name"] + " " + data["type"] + '\n')
+                    resumen.write("Respuesta:" + '\n')
+                    resumen.write(res["code"] + " " + "\n" + res["message"] + '\n')
+                except KeyError:
+                    resumen.write("Actualización correcta " + str(res["id"]) + " modificado" + '\n')
+
+                try:
+                    Id = int(res["id"])
+                    tmp = ncon.cursor()
+                    comando = "update wpublicados set accion='',accion=%s where id_wtiendas=%s and id_woo=%s "
+                    tmp.execute(comando, (tienda, id, str(res)))
+                    ncon.commit()
+                    tmp.close()
+                except KeyError:
+                    print("error")
+
+                print("MODIFICACION PRODUCTO:", res)
+                log.write("MODIFICACION PRODUCTO:" + str(res) + '\n')
+
+            elif pd["accion"] == "B":
+
+                id = str(pd["id_woo"])
+                res = wcapi.delete("products/" + id, params={"force": True}).json()
+                print("BAJA PRODUCTO", res)
+                log.write("BAJA PRODUCTO:" + str(res) + '\n')
+
+                try:
+                    resumen.write("BAJA PRODUCTO" + '\n')
+                    resumen.write(data["sku"] + " " + data["name"] + " " + data["type"] + '\n')
+                    resumen.write("Respuesta:" + '\n')
+                    resumen.write(res["code"] + " " + "\n" + res["message"] + '\n')
+                except KeyError:
+                    resumen.write("Baja correcta " + str(res["id"]) + " dado de baja" + '\n')
+
+                try:
+                    Id = int(res["id"])
+                    tmp = ncon.cursor()
+                    comando = "delete from wpublicados where id_wtiendas=%s and id_woo=%s "
+                    tmp.execute(comando, (tienda, id))
+                    ncon.commit()
+                    tmp.close()
+                except KeyError:
+                    print("error")
+
+        # Variaciones
+
+        elif pd["type"].strip() == "variation":
+
+            data.clear()
+            atrib1 = pd["valor_atributo_1"].strip()
+            atrib2 = pd["valor_atributo_2"].strip()
+            atrib1 = atrib1.strip()
+            atrib2 = atrib2.strip()
+
+            data.update(
+                {
+                    "stock_status": pd["stock_status"].strip(),
+                    "stock_quantity": str(pd["stock_quantity"]),
+                    "regular_price": str(pd["regular_price"]),
+                    "weight": str(pd["weight"]),
+                    "dimensions": {"length": str(pd["lenght"]), "width": str(pd["width"]), "height": str(pd["height"])},
+                    "attributes":
+                        [
+                            {"name": pd["nombre_atributo_1"], "option": atrib1},
+                            {"name": pd["nombre_atributo_2"], "option": atrib2}
+                        ]})
+            idparent = ""
+
+            print("DATO A ACTUALIZAR:", data)
+            log.write("DATO A ACTUALIZAR:" + str(data) + '\n')
+
+            try:
+                id = pd["parent_id"]
+                tmp = ncon.cursor()
+                comando = "select id_woo from wpublicados where id_articulo =%s"
+                tmp.execute(comando, id)
+                for fila in tmp:
+                    idparent = str(fila["id_woo"])
+                tmp.close()
+            except KeyError:
+                print("Error")
+
+            # alta
+            if pd["accion"] == "A":
+
+                res = wcapi.post("products/" + idparent + "/variations", data).json()
+                print("ALTA VARIACION", res)
+                log.write("ALTA VARIACION:" + str(res) + '\n')
+
+                try:
+                    resumen.write("ALTA VARIACION" + '\n')
+                    resumen.write(idparent + " " + atrib1 + " " + atrib2 + '\n')
+                    resumen.write("Respuesta:" + '\n')
+                    resumen.write(res["code"] + " " + "\n" + res["message"] + '\n')
+                except KeyError:
+                    resumen.write("Actualización correcta " + str(res["id"]) + " agregado" + '\n')
+
+                # guarda id en publicados
+                try:
+                    id = int(res["id"])
+                    tmp = ncon.cursor()
+                    comando = "update wpublicados set id_woo = %s , accion='' , resultado=%s where id_wtiendas=%s and id_articulo=%s "
+                    tmp.execute(comando, (id, str(res), tienda, pd["id_articulo"]))
+                    ncon.commit()
+                    tmp.close()
+
+
+                except KeyError:
+                    pass
+
+            # modificacion
+
+            elif pd["accion"] == "M":
+
+                id = str(pd["id_woo"])
+                res = wcapi.put("products/" + idparent + "/variations/" + id, data).json()
+                print("MODIFICACION VARIACION:", res)
+                log.write("MODIFICACION VARIACION:" + str(res) + '\n')
+
+                try:
+                    resumen.write("MODIFICACION VARIACION" + '\n')
+                    resumen.write(idparent + " " + atrib1 + " " + atrib2 + '\n')
+                    resumen.write("Respuesta:" + '\n')
+                    resumen.write(res["code"] + " " + "\n" + res["message"] + '\n')
+                except KeyError:
+                    resumen.write("Actualización correcta " + str(res["id"]) + " modificado" + '\n')
+
+                try:
+                    id = int(res["id"])
+                    tmp = ncon.cursor()
+                    comando = "update wpublicados set accion='' , resultado=%s where id_wtiendas=%s and id_woo=%s "
+                    tmp.execute(comando, (str(res), tienda, id))
+                    ncon.commit()
+                    tmp.close()
+                except KeyError:
+                    pass
+
+            # baja
+            elif pd["accion"] == "B":
+
+                id = str(pd["id_woo"])
+                res = wcapi.delete("products/" + idparent + "/variations/" + id, params={"force": True}).json()
+                print("BAJA VARIACION:", res)
+                log.write("BAJA VARIACION:" + str(res) + '\n')
+
+                try:
+                    resumen.write("BAJA PRODUCTO" + '\n')
+                    resumen.write(idparent + " " + atrib1 + " " + atrib2 + '\n')
+                    resumen.write("Respuesta:" + '\n')
+                    resumen.write(res["code"] + " " + "\n" + res["message"] + '\n')
+                except KeyError:
+                    resumen.write("Baja correcta " + str(res["id"]) + " dado de baja" + '\n')
+
+                try:
+                    Id = int(res["id"])
+                    tmp = ncon.cursor()
+                    comando = "delete from wpublicados where id_wtiendas=%s and id_woo=%s "
+                    tmp.execute(comando, (tienda, id))
+                    ncon.commit()
+                    tmp.close()
+                except KeyError:
+                    print("error")
+
+        log.write("=" * 50 + '\n')
+        resumen.write("=" * 50 + '\n')
+        print("=" * 100)
+
+    # cierra
+    data.clear()
+    cursor.close()
+    ncon.close()
+    log.close()
+    resumen.close()
+    return True
+
+
+# Llamada a funciones
+
+if opcion == "C":
+    actualizar_categorias()
+if opcion == "P":
+    actualizar_productos()

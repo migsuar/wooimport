@@ -1,0 +1,148 @@
+# -*- coding: utf-8 -*-
+import json
+import sys
+
+import pymysql.cursors
+from woocommerce import API
+
+# Lee parametros
+tienda = sys.argv[1]
+
+ArcConf = ""
+
+# Lee configuraciones
+if tienda == "1":
+    ArcConf = "apiconfig_1.json"
+elif tienda == "2":
+    ArcConf = "apiconfig_2.json"
+elif tienda == "3":
+    ArcConf = "apiconfig_3.json"
+elif tienda == "4":
+    ArcConf = "apiconfig_4.json"
+elif tienda == "5":
+    ArcConf = "apiconfig_5.json"
+elif tienda == "6":
+    ArcConf = "apiconfig_6.json"
+elif tienda == "7":
+    ArcConf = "apiconfig_7.json"
+elif tienda == "8":
+    ArcConf = "apiconfig_8.json"
+elif tienda == "9":
+    ArcConf = "apiconfig_9.json"
+else:
+    print("Parametro erroneo !!")
+
+with open(ArcConf) as config:
+    data = json.load(config)
+
+    URL = data["url"]
+    CONSUMER_KEY = data["consumer_key"]
+    CONSUMER_SECRET = data["consumer_secret"]
+    HOST = data["host"]
+    PORT = data["port"]
+    USER = data["user"]
+    PASSWD = data["passwd"]
+    DATABASE = data["database"]
+
+# Configura API woocommerce
+
+wcapi = API(
+    url=URL,
+    consumer_key=CONSUMER_KEY,
+    consumer_secret=CONSUMER_SECRET,
+    version="wc/v3",
+    timeout=50,
+    query_string_auth=True
+)
+
+# Conectar con base de datos sintesys
+
+ncon = pymysql.connect(host=HOST,
+                       user=USER,
+                       passwd=PASSWD,
+                       database=DATABASE,
+                       port=PORT,
+                       cursorclass=pymysql.cursors.DictCursor)
+
+
+# Actualizacion de categorias
+def CabeceraPedido(data):
+    # cabecera
+    numdoc = data["number"]
+    id = data["id"]
+    estado = data["status"]
+    fecdoc = data["date_created"]
+    nota = data["customer_note"]
+    formapago = data["payment_method_title"]
+
+    print("Nro:" + numdoc)
+    print("Id: " + str(id))
+    print ("Estado: " + estado )
+    print ("Fecha: " + fecdoc )
+    print ("Nota: " + nota)
+    print ("Forma de pago: " + formapago)
+
+def ItemsPedido(data):
+    items = data["line_items"]
+    for item in items:
+        desart = item["name"]
+        sku = item["sku"]
+        id_articulo = int(sku)
+        cantidad = item["quantity"]
+        precio = item["price"]
+
+        print(sku,desart,cantidad,precio)
+
+def DatosCliente(data):
+    # datos de cliente
+    nombre = data["billing"]["first_name"]
+    apellido = data["billing"]["last_name"]
+    direccion = data["billing"]["address_1"]
+    localidad = data["billing"]["city"]
+    codpos = data["billing"]["postcode"]
+    email = data["billing"]["email"]
+    print("Cliente: " + nombre + " " + apellido + " " + direccion + " " + localidad + " " + codpos + " " + email)
+
+
+def DatosEnvio(data):
+    # datos de envio
+    nombre = data["shipping"]["first_name"]
+    apellido = data["shipping"]["last_name"]
+    direccion = data["shipping"]["address_1"]
+    localidad = data["shipping"]["city"]
+    codpos = data["shipping"]["postcode"]
+    print("Envio a:" + nombre + " " + apellido + " " + direccion + " " + localidad + " " + codpos + " ")
+
+
+
+def leer_pedidos():
+    # para sintax parametros print(wcapi.delete("orders/723/notes/281", params={"force": True}).json())
+    res = wcapi.get("orders").json()
+
+    for pedido in res:
+        CabeceraPedido(pedido)
+        ItemsPedido(pedido)
+        DatosCliente(pedido)
+        DatosEnvio(pedido)
+        print("="*256)
+
+    '''
+        try:
+            c = int(res["id"])
+            i = fila["id_rubros"]
+            t = "id_woo" + tienda
+            comando = "update rubros set " + t + "=%s where id_rubros=%s "
+            cursor.execute(comando, (c, i))
+            ncon.commit()
+        except KeyError:
+            pass
+
+    cursor.close()
+    ncon.close()
+    '''
+    return True
+
+
+# Llamada a funciones
+
+leer_pedidos()
