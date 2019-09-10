@@ -68,8 +68,8 @@ ncon = pymysql.connect(host=HOST,
 log = open("log_completo.txt", 'w')
 resumen = open("log_resumen.txt", 'w')
 
-
 # Actualizacion de categorias
+
 
 def actualizar_categorias():
     data = {}
@@ -151,7 +151,7 @@ def actualizar_productos():
                     ]}
         )
 
-        # loop de actualizacion1"1
+        # loop de actualizacion
 
         # Productos
 
@@ -192,6 +192,7 @@ def actualizar_productos():
             elif pd["accion"] == "M":
                 id = str(pd["id_woo"])
                 res = wcapi.put("products/" + id, data).json()
+
 
                 try:
                     resumen.write("MODIFICACION PRODUCTO" + '\n')
