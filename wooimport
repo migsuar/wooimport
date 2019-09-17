@@ -371,7 +371,6 @@ def actualizar_productos():
     resumen.close()
     return True
 
-
 # Llamada a funciones
 
 if opcion == "C":

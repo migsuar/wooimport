@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import datetime
 import json
 import sys
 
@@ -7,7 +8,6 @@ from woocommerce import API
 
 # Lee parametros
 tienda = sys.argv[1]
-
 ArcConf = ""
 
 # Lee configuraciones
@@ -65,35 +65,8 @@ ncon = pymysql.connect(host=HOST,
                        cursorclass=pymysql.cursors.DictCursor)
 
 
-# Actualizacion de categorias
-def CabeceraPedido(data):
-    # cabecera
-    numdoc = data["number"]
-    id = data["id"]
-    estado = data["status"]
-    fecdoc = data["date_created"]
-    nota = data["customer_note"]
-    formapago = data["payment_method_title"]
 
-    print("Nro:" + numdoc)
-    print("Id: " + str(id))
-    print ("Estado: " + estado )
-    print ("Fecha: " + fecdoc )
-    print ("Nota: " + nota)
-    print ("Forma de pago: " + formapago)
-
-def ItemsPedido(data):
-    items = data["line_items"]
-    for item in items:
-        desart = item["name"]
-        sku = item["sku"]
-        id_articulo = int(sku)
-        cantidad = item["quantity"]
-        precio = item["price"]
-
-        print(sku,desart,cantidad,precio)
-
-def DatosCliente(data):
+def datos_cliente(data):
     # datos de cliente
     nombre = data["billing"]["first_name"]
     apellido = data["billing"]["last_name"]
@@ -101,45 +74,116 @@ def DatosCliente(data):
     localidad = data["billing"]["city"]
     codpos = data["billing"]["postcode"]
     email = data["billing"]["email"]
-    print("Cliente: " + nombre + " " + apellido + " " + direccion + " " + localidad + " " + codpos + " " + email)
+    nombreCompleto = nombre + " " + apellido
+    nota = "Cliente: " + nombre + " " + apellido + " \n " + direccion + " " + localidad + " " + codpos + " \n " + email + " \n "
+    try:
+        with ncon.cursor() as cursor:
+            sql = "select id_clientes from clientes where email=%s"
+            cursor.execute(sql, email)
+            reccount = cursor.execute(sql, email)
+            if reccount > 0:
+                res = cursor.fetchone()
+                idCliente = res["id_clientes"]
+                nota = nota + "Cliente registrado nro:" + str(idCliente)
+            else:
+                idCliente = 0
+                nota = nota + "* Cliente nuevo"
+
+    finally:
+        pass
+
+    return idCliente, nombreCompleto, nota
 
 
-def DatosEnvio(data):
+def cabecera_pedido(data):
+    # cabecera
+    numdoc = data["number"]
+    id = data["id"]
+    estado = data["status"]
+    fecdoc = data["date_created"]
+    observaciones = data["customer_note"]
+    formapago = data["payment_method_title"]
+    idCliente,nombreCompleto,nota = datos_cliente(data)
+    enombre, eapellido, edireccion, elocalidad, ecodpos = datos_envio(data)
+    envio = "Datos de envío: "+"\n"+"Nombre: "+enombre+" "+eapellido+" "+"\n"+"Dirección: "+edireccion+" "+elocalidad+" "+ecodpos
+
+    print("Nro:" + numdoc)
+    print("Id: " + str(id))
+    print("Estado: " + estado)
+    print("Fecha: " + fecdoc)
+    print("Nota: " + nota)
+    print("Forma de pago: " + formapago)
+
+    # alta de pedido
+
+    try:
+        with ncon.cursor() as cursor:
+            sql = """
+            insert into remicabe
+            (id_clientes, id_tipodocu, fecdoc, observaciones, numdoc, nomcli )
+            values 
+            (%s,%s,%s,%s,%s,%s)
+            """
+
+            agno = int(fecdoc[0:4])
+            mes = int(fecdoc[5:7])
+            dia = int(fecdoc[8:10])
+
+            data = (idCliente, 88, datetime.date(agno, mes, dia), nota + "\n" + envio + "\n" + observaciones, numdoc, nombreCompleto)
+            cursor.execute(sql, data)
+            ncon.commit()
+
+    finally:
+        pass
+
+
+def items_pedido(data):
+    items = data["line_items"]
+    for item in items:
+        desart = item["name"]
+        sku = item["sku"]
+        cantidad = item["quantity"]
+        precio = item["price"]
+
+        try:
+            sql = "select id_art"
+
+                agno = int(fecdoc[0:4])
+                mes = int(fecdoc[5:7])
+                dia = int(fecdoc[8:10])
+
+                data = (
+                idCliente, 88, datetime.date(agno, mes, dia), nota + "\n" + envio + "\n" + observaciones, numdoc,
+                nombreCompleto)
+                cursor.execute(sql, data)
+                ncon.commit()
+
+        finally:
+            pass
+
+
+
+        print(sku, desart, cantidad, precio)
+
+def datos_envio(data):
     # datos de envio
     nombre = data["shipping"]["first_name"]
     apellido = data["shipping"]["last_name"]
     direccion = data["shipping"]["address_1"]
     localidad = data["shipping"]["city"]
     codpos = data["shipping"]["postcode"]
-    print("Envio a:" + nombre + " " + apellido + " " + direccion + " " + localidad + " " + codpos + " ")
-
-
+    return nombre,apellido,direccion,localidad,codpos
 
 def leer_pedidos():
-    # para sintax parametros print(wcapi.delete("orders/723/notes/281", params={"force": True}).json())
     res = wcapi.get("orders").json()
 
+    # graba pedido
     for pedido in res:
-        CabeceraPedido(pedido)
-        ItemsPedido(pedido)
-        DatosCliente(pedido)
-        DatosEnvio(pedido)
-        print("="*256)
+        cabecera_pedido(pedido)
+        items_pedido(pedido)
 
-    '''
-        try:
-            c = int(res["id"])
-            i = fila["id_rubros"]
-            t = "id_woo" + tienda
-            comando = "update rubros set " + t + "=%s where id_rubros=%s "
-            cursor.execute(comando, (c, i))
-            ncon.commit()
-        except KeyError:
-            pass
 
-    cursor.close()
     ncon.close()
-    '''
     return True
 
 
